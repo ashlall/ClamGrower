@@ -1,7 +1,7 @@
 '''
 Code to model clam growth based on temperature and d18o
 
-Author: (Original) Sawyer Hilt, (Modifications) Ashwin Lall
+Author: (Original) Sawyer Hilt, (Modifications) Ashwin Lall, (Technical Assist) Dave Goodwin
 
 '''
 
@@ -13,6 +13,7 @@ import math
 from statistics import NormalDist
 import pandas as pd
 import random
+import datetime
 
 def periodicFunction(a,b,c,d,t):
     """
@@ -66,7 +67,19 @@ def genHourlyTemps(noYears):
     hourlyTemps = genHrFromDay(meanDailyTemps)
     return hourlyTemps
 
-def genHourlyd18o(temps):
+def genHourlyWaterd18o(noYears, maxd18o):
+    """
+    Purpose: Generates hourly d18o for water using a sine curve with peak in the summer of maxd18o
+
+    input:
+    noYears = number of years to run 'experiment', maxd18o = max value 
+
+    output:
+    d18oWater = hourly d18o values for water
+    """
+    return periodicFunction(maxd18o/2, (2*math.pi/(365*24)), -90.75*24, maxd18o/2, list(range(365 * 24))) * noYears
+
+def genHourlyd18o(temps, d18oWater):
     """
     Purpose: this function takes a given list of temperatures and converts them to d18o values of modelled clam
     shells using Dettman et al's 1999 paleotemperature equation.
@@ -78,14 +91,14 @@ def genHourlyd18o(temps):
     output:
     d18oshellVPDB = temperature lists converted to list of d18o values
     """
-    d18oWater = 0 # assuming a constant d18o value of water of 0 (on VSMOW scale)
+    #d18oWater = 0 # assuming a constant d18o value of water of 0 (on VSMOW scale)
     d18oShellVPDB = []
     for i in range(len(temps)): # for loop that converts temperature for each item in 'Temps' list
         tempK = temps[i] + 273.15 
         dettman = (2.559*((10**6)*(tempK)**(-2))+0.715) #using dettman's 1999 equation to find alpha lna100 given temp of water
         lna = dettman / 1000 # dividing by 1000 to get ln(a)
         alpha = math.exp(lna) # converting ln(a) to a (alpha)
-        d18oVSMOW = alpha*(1000 + d18oWater) - 1000 # converting to d18o in VSMOW
+        d18oVSMOW = alpha*(1000 + d18oWater[i]) - 1000 # converting to d18o in VSMOW
         d18oVPDB = ((d18oVSMOW - 30.91)/ (1.03091)) # converting d18o from VSMOW to VPDB scale
         d18oShellVPDB.append(d18oVPDB) # appending to list 
 
@@ -209,7 +222,7 @@ def genPotentialSample(hourlyIncWidth, hourlyd18o, sampleSize):
             
             
                                                                               
-def sampleShell(noShells, temps, mu_ogt, sd_ogt, mu_ogt_sd, sd_ogt_sd, maxHrWidth, shutdowns, growthRate, startJulian, endJulian, springIncrease):
+def sampleShell(noShells, temps, mu_ogt, sd_ogt, mu_ogt_sd, sd_ogt_sd, maxHrWidth, shutdowns, growthRate, startJulian, endJulian, springIncrease, d18oWater):
     """
     Purpose: sampleShell uses avg hourly increment widths calculated with hourlyIncWidth function to 
 
@@ -231,6 +244,7 @@ def sampleShell(noShells, temps, mu_ogt, sd_ogt, mu_ogt_sd, sd_ogt_sd, maxHrWidt
     startJulian = start of spring
     endJulian = end of spring
     springIncrease = factor by which growth is higher in the spring
+    d18oWater = d18o of Water
 
     Outputs:
     allShells = list of lists of growth per hour for each shell
@@ -244,7 +258,7 @@ def sampleShell(noShells, temps, mu_ogt, sd_ogt, mu_ogt_sd, sd_ogt_sd, maxHrWidt
     OGT_sd = NormalDist(mu_ogt_sd, sd_ogt_sd).samples(noShells)   # generate the OGT sd for all specimen
     for i in range(noShells):
         hourlyWidth = hourlyIncWidth(temps, OGT_mu[i], OGT_sd[i], maxHrWidth, shutdowns, growthRate, startJulian, endJulian, springIncrease) 
-        hourlyd18o = genHourlyd18o(temps)
+        hourlyd18o = genHourlyd18o(temps, d18oWater)
         samples, sampleEndHour = genPotentialSample(hourlyWidth, hourlyd18o, 300)
         allShells.append(samples)
         allTimes.append(sampleEndHour)
@@ -283,7 +297,7 @@ def subSample(samples, times, windowSize, windowSD):
     return subsamples, subtimes
 
 
-def plotShells(samples, subsamples, times, noYears, sampleEndHour, hourlyTempsC, shutdowns, growthRate, startJulian, endJulian, springIncrease):
+def plotShells(samples, subsamples, times, noYears, sampleEndHour, hourlyTempsC, shutdowns, growthRate, startJulian, endJulian, springIncrease, d18oWater):
     """
     Purpose: plots all shell values onto one plot
 
@@ -302,32 +316,38 @@ def plotShells(samples, subsamples, times, noYears, sampleEndHour, hourlyTempsC,
     startJulian = start of spring
     endJulian = end of spring
     springIncrease = factor by which growth is higher in the spring
+    d18oWater = d18o of water
     
     output:
     shows two plots, one which displays ALL sampled shell values and last hr of sample taken on x-axis, and
     another plot which shows temperature over time 
     """
-    pyplot.subplot(5, 1, 1)
+    pyplot.subplot(6, 1, 1)
     pyplot.plot(range(24*365*noYears), hourlyTempsC)
     pyplot.xlabel('Hour')
     pyplot.ylabel('Hourly Temperature (deg C)')
 
-    pyplot.subplot(5, 1, 2)
-    pyplot.plot(range(24*365*noYears), genHourlyd18o(hourlyTempsC))
+    pyplot.subplot(6, 1, 2)
+    pyplot.plot(range(24*365*noYears), genHourlyd18o(hourlyTempsC, d18oWater))
     pyplot.xlabel('Hour')
     pyplot.ylabel('d18o')
 
-    pyplot.subplot(5, 1, 3)
+    pyplot.subplot(6, 1, 3)
+    pyplot.plot(range(24*365*noYears), d18oWater)
+    pyplot.xlabel('Hour')
+    pyplot.ylabel('d18o Water')
+
+    pyplot.subplot(6, 1, 4)
     pyplot.plot(range(24*365*noYears), hourlyIncWidth(hourlyTempsC, 25, 6, 5, shutdowns, growthRate, startJulian, endJulian, springIncrease))
     pyplot.xlabel('Hour')
     pyplot.ylabel('Hourly growth')
 
-    pyplot.subplot(5, 1, 4)
+    pyplot.subplot(6, 1, 5)
     pyplot.plot(samples[0])
     pyplot.xlabel('Time stamp')
     pyplot.ylabel('Real d18o value (VPDB)')
 
-    pyplot.subplot(5, 1, 5)
+    pyplot.subplot(6, 1, 6)
     pyplot.plot(subsamples[0])
     pyplot.xlabel('Subsample number')
     pyplot.ylabel('Sample d18o value (VPDB)')
@@ -362,7 +382,7 @@ def getStatsByYear(sample, times, BLANK = ""):
     stats = []
     for i in range(len(dataByYear)):
         data = dataByYear[i]
-        print("Year", i, ":", data)
+        #print("Year", i, ":", data)
         if len(data) > 0:
             stats.append((min(data), max(data), max(data) - min(data)))
         else:
@@ -370,7 +390,7 @@ def getStatsByYear(sample, times, BLANK = ""):
     return stats
                      
 
-def saveData(samples, times, OGT_mu, OGT_sd, SEP = ","):
+def saveData(samples, times, OGT_mu, OGT_sd, SEP = ",", timestamp):
     """
     Purpose: Dump data into files
 
@@ -380,14 +400,17 @@ def saveData(samples, times, OGT_mu, OGT_sd, SEP = ","):
     OGT_mu = OGT for the shells
     OGT_sd = sd of the OGT for the shells
     SEP = separator for the CSV files
+    timestamp = timestamp of this run
     
     output:
     a file with the OGT stats followed by the sample readings for each shell
     a file with some stats per year for each shell
     """
 
+    timestamp = datetime.datetime.now().replace(microsecond=0).isoformat().replace("T", "-").replace(":", "-")
+
     # dump data for OGT stats and raw sample readings
-    raw_data = open("raw_data.csv", "w")   # this clobbers any existing file in the folder
+    raw_data = open(timestamp + "-raw_data.csv", "w")   
     raw_data.write("OGT" + SEP + "sd\n")
     for i in range(len(samples)):
         raw_data.write(str(OGT_mu[i]) + SEP + str(OGT_sd[i]))
@@ -397,9 +420,9 @@ def saveData(samples, times, OGT_mu, OGT_sd, SEP = ","):
     raw_data.close()
 
     # dump statistics per year for each specimen
-    yearly_min = open("yearly_min.csv", "w")   # this clobbers any existing file in the folder
-    yearly_max = open("yearly_max.csv", "w")   # this clobbers any existing file in the folder
-    yearly_range = open("yearly_range.csv", "w")   # this clobbers any existing file in the folder
+    yearly_min = open(timestamp + "-yearly_min.csv", "w")   # this clobbers any existing file in the folder
+    yearly_max = open(timestamp + "-yearly_max.csv", "w")   # this clobbers any existing file in the folder
+    yearly_range = open(timestamp + "-yearly_range.csv", "w")   # this clobbers any existing file in the folder
     all_stats = []
     for i in range(len(samples)):
         stats = getStatsByYear(samples[i], times[i])
@@ -410,7 +433,7 @@ def saveData(samples, times, OGT_mu, OGT_sd, SEP = ","):
     yearly_range.write("Iteration" + SEP + SEP.join(["Year" + str(i) for i in range(1, num_years + 1)]) + "\n")
     for i in range(len(samples)):
         stats = all_stats[i]
-        print(stats)
+        #print(stats)
         mins = SEP.join([str(i[0]) for i in stats])
         maxs = SEP.join([str(i[1]) for i in stats])
         ranges = SEP.join([str(i[2]) for i in stats])
@@ -422,20 +445,23 @@ def saveData(samples, times, OGT_mu, OGT_sd, SEP = ","):
     yearly_range.close()
 
 
-def dumpShell(shell):
+def dumpShell(hourlyGrowth, timestamp):
     '''
     This dumps the shell's values to a CSV
     Ignores all entries that are 0
+
+    input:
+        hourlyGrowth: hourly growth of the shell
+        timestamp = timestamp of this run
     '''
-    file = open("shell.csv", "w")
-    for val in shell:
+    file = open(timestamp + "-shell.csv", "w")
+    for val in hourlyGrowth:
         file.write(str(val) + "\n")
     file.close()
 
 def main():
     noYears = 10 # no. of years to run model
     noShells = 5 # no. of shells to be sampled
-    hourlyTempsC = genHourlyTemps(noYears) # creating list of temperatures for time period
 
     #ogt = 25 # optimal growth temperature
     #sd = 5   # standard deviation
@@ -464,14 +490,21 @@ def main():
     startJulian = 90
     endJulian = 150
     springIncrease = 2.0
+
+    # water d18o parameter
+    maxWaterd18o = 0.5
+    d18oWater = genHourlyWaterd18o(noYears, maxWaterd18o)
+
+    # generate hourly temps 
+    hourlyTempsC = genHourlyTemps(noYears) # creating list of temperatures for time period
     
     # list which contains hourly temps and hr of last increment width for each sample
-    samples, times, OGT_mu, OGT_sd = sampleShell(noShells, hourlyTempsC, mu_ogt, sd_ogt, mu_ogt_sd, sd_ogt_sd, maxHrWidth, shutdowns, growthRate, startJulian, endJulian, springIncrease) 
+    samples, times, OGT_mu, OGT_sd = sampleShell(noShells, hourlyTempsC, mu_ogt, sd_ogt, mu_ogt_sd, sd_ogt_sd, maxHrWidth, shutdowns, growthRate, startJulian, endJulian, springIncrease, d18oWater) 
 
     # compute a subsample of each sample
     subsamples, times = subSample(samples, times, windowWidth, windowSD)
 
-    print(len(samples), len(samples[0]), len(subsamples[0]))
+    #print(len(samples), len(samples[0]), len(subsamples[0]))
 
     dumpShell(hourlyIncWidth(hourlyTempsC, 25, 6, 5, shutdowns, growthRate, startJulian, endJulian, springIncrease))
 
@@ -482,9 +515,8 @@ def main():
     # dump the results into a file
     saveData(subsamples, times, OGT_mu, OGT_sd)
     
-        
     # plot all samples and compare against temp over time plot for same study period
-    plotShells(samples, subsamples, times, noYears, list(range(len(samples))), hourlyTempsC, shutdowns, growthRate, startJulian, endJulian, springIncrease) 
+    plotShells(samples, subsamples, times, noYears, list(range(len(samples))), hourlyTempsC, shutdowns, growthRate, startJulian, endJulian, springIncrease, d18oWater) 
     
     
 
