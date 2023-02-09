@@ -34,50 +34,55 @@ def periodicFunction(a,b,c,d,t):
         Y.append(y)
     return Y
 
-def genHrFromDay(d):
+def genHrFromDay(d, temp_amplitude_day = 2.5):
     """
     Purpose: this function takes daily simulated temperatures and creates 24 hours of temps from them, using
     periodic function and daily simulated temp as mean temp for each 24 hr increment
     
     input:
     d= list of mean daily temperatures
+    temp_amplitude_day = temperature amplitude over a day
     
     output:
     hourData = list of mean hourly temperatures
     """
     hourData = []
     for i in range(len(d)):
-        out = periodicFunction(2.5, math.pi/12, 3, d[i],list(range(24)))
+        out = periodicFunction(temp_amplitude_day, math.pi/12, 3, d[i],list(range(24)))
         hourData = hourData + out
 
     return hourData
 
-def genHourlyTemps(noYears):
+def genHourlyTemps(noYears, temp_mean = 20, temp_amplitude_year = 7.5, temp_amplitude_day = 2.5):
     """
     Purpose: use genHrFromDay function to create hourly temperatures for specified time period
 
     input:
     noYears = number of years to run 'experiment'
+    temp_mean = mean temperature for the year
+    temp_amplitude_year = temperature amplitude over the year
+    temp_amplitude_day = temperature amplitude over a day
 
     output:
     d18oShellVPDB = hourly d18o values for clam shells, properly converted to d18o values on VPDB scale
     """
 
-    meanDailyTemps = periodicFunction(7.5, (2*math.pi)/365, -90.75, 20, list(range(0,365))) * noYears
-    hourlyTemps = genHrFromDay(meanDailyTemps)
+    meanDailyTemps = periodicFunction(temp_amplitude_year, (2*math.pi)/365, -90.75, temp_mean, list(range(0,365))) * noYears
+    hourlyTemps = genHrFromDay(meanDailyTemps, temp_amplitude_day)
     return hourlyTemps
 
-def genHourlyWaterd18o(noYears, maxd18o):
+def genHourlyWaterd18o(noYears, mean, amplitude):
     """
     Purpose: Generates hourly d18o for water using a sine curve with peak in the summer of maxd18o
 
     input:
-    noYears = number of years to run 'experiment', maxd18o = max value 
+    noYears = number of years to run 'experiment'
+    mean, amplitude: mean and amplitude of sine curves
 
     output:
     d18oWater = hourly d18o values for water
     """
-    return periodicFunction(maxd18o/2, (2*math.pi/(365*24)), -90.75*24, maxd18o/2, list(range(365 * 24))) * noYears
+    return periodicFunction(amplitude, (2*math.pi/(365*24)), -90.75*24, mean, list(range(365 * 24))) * noYears
 
 def genHourlyd18o(temps, d18oWater):
     """
@@ -390,7 +395,7 @@ def getStatsByYear(sample, times, BLANK = ""):
     return stats
                      
 
-def saveData(samples, times, OGT_mu, OGT_sd, SEP = ",", timestamp):
+def saveData(samples, times, OGT_mu, OGT_sd, timestamp, SEP = ","):
     """
     Purpose: Dump data into files
 
@@ -406,8 +411,6 @@ def saveData(samples, times, OGT_mu, OGT_sd, SEP = ",", timestamp):
     a file with the OGT stats followed by the sample readings for each shell
     a file with some stats per year for each shell
     """
-
-    timestamp = datetime.datetime.now().replace(microsecond=0).isoformat().replace("T", "-").replace(":", "-")
 
     # dump data for OGT stats and raw sample readings
     raw_data = open(timestamp + "-raw_data.csv", "w")   
@@ -463,6 +466,13 @@ def main():
     noYears = 10 # no. of years to run model
     noShells = 5 # no. of shells to be sampled
 
+    temp_mean = 20               # mean temperature for the year
+    temp_amplitude_year = 7.5    # temperature amplitude over the year
+    temp_amplitude_day = 2.5     # temperature amplitude over a day
+
+    # timestamp used for all the files created by this run
+    timestamp = datetime.datetime.now().replace(microsecond=0).isoformat().replace("T", "-").replace(":", "-")
+
     #ogt = 25 # optimal growth temperature
     #sd = 5   # standard deviation
     mu_ogt = 25      # mu for the OGT mean 
@@ -492,11 +502,12 @@ def main():
     springIncrease = 2.0
 
     # water d18o parameter
-    maxWaterd18o = 0.5
-    d18oWater = genHourlyWaterd18o(noYears, maxWaterd18o)
+    meanWaterd18o = 0.25
+    amplitudeWaterd18o = 0.25
+    d18oWater = genHourlyWaterd18o(noYears, meanWaterd18o, amplitudeWaterd18o)
 
     # generate hourly temps 
-    hourlyTempsC = genHourlyTemps(noYears) # creating list of temperatures for time period
+    hourlyTempsC = genHourlyTemps(noYears, temp_mean, temp_amplitude_year, temp_amplitude_day) # creating list of temperatures for time period
     
     # list which contains hourly temps and hr of last increment width for each sample
     samples, times, OGT_mu, OGT_sd = sampleShell(noShells, hourlyTempsC, mu_ogt, sd_ogt, mu_ogt_sd, sd_ogt_sd, maxHrWidth, shutdowns, growthRate, startJulian, endJulian, springIncrease, d18oWater) 
@@ -506,14 +517,15 @@ def main():
 
     #print(len(samples), len(samples[0]), len(subsamples[0]))
 
-    dumpShell(hourlyIncWidth(hourlyTempsC, 25, 6, 5, shutdowns, growthRate, startJulian, endJulian, springIncrease))
+    # dump one specific sample into a file
+    dumpShell(hourlyIncWidth(hourlyTempsC, 25, 6, 5, shutdowns, growthRate, startJulian, endJulian, springIncrease), timestamp)
 
     # print the stats for each sample, up to the first 5
     #for i in range(min(noShells, 5)):
     #    print(getStatsByYear(subsamples[i], times[i]))
 
     # dump the results into a file
-    saveData(subsamples, times, OGT_mu, OGT_sd)
+    saveData(subsamples, times, OGT_mu, OGT_sd, timestamp)
     
     # plot all samples and compare against temp over time plot for same study period
     plotShells(samples, subsamples, times, noYears, list(range(len(samples))), hourlyTempsC, shutdowns, growthRate, startJulian, endJulian, springIncrease, d18oWater) 
