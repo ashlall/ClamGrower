@@ -395,7 +395,7 @@ def getStatsByYear(sample, times, BLANK = ""):
     return stats
                      
 
-def saveData(samples, times, OGT_mu, OGT_sd, timestamp, SEP = ","):
+def saveData(samples, times, OGT_mu, OGT_sd, name, timestamp, SEP = ","):
     """
     Purpose: Dump data into files
 
@@ -404,8 +404,9 @@ def saveData(samples, times, OGT_mu, OGT_sd, timestamp, SEP = ","):
     times = timestamps for each sample
     OGT_mu = OGT for the shells
     OGT_sd = sd of the OGT for the shells
-    SEP = separator for the CSV files
+    name = name of this sample (e.g., potential or sampled)
     timestamp = timestamp of this run
+    SEP = separator for the CSV files
     
     output:
     a file with the OGT stats followed by the sample readings for each shell
@@ -413,7 +414,7 @@ def saveData(samples, times, OGT_mu, OGT_sd, timestamp, SEP = ","):
     """
 
     # dump data for OGT stats and raw sample readings
-    raw_data = open(timestamp + "-raw_data.csv", "w")   
+    raw_data = open(timestamp + "-" + name + "-raw_data.csv", "w")   
     raw_data.write("OGT" + SEP + "sd\n")
     for i in range(len(samples)):
         raw_data.write(str(OGT_mu[i]) + SEP + str(OGT_sd[i]))
@@ -423,9 +424,9 @@ def saveData(samples, times, OGT_mu, OGT_sd, timestamp, SEP = ","):
     raw_data.close()
 
     # dump statistics per year for each specimen
-    yearly_min = open(timestamp + "-yearly_min.csv", "w")   # this clobbers any existing file in the folder
-    yearly_max = open(timestamp + "-yearly_max.csv", "w")   # this clobbers any existing file in the folder
-    yearly_range = open(timestamp + "-yearly_range.csv", "w")   # this clobbers any existing file in the folder
+    yearly_min = open(timestamp + "-" + name + "-yearly_min.csv", "w")
+    yearly_max = open(timestamp + "-" + name + "-yearly_max.csv", "w")
+    yearly_range = open(timestamp + "-" + name + "-yearly_range.csv", "w")
     all_stats = []
     for i in range(len(samples)):
         stats = getStatsByYear(samples[i], times[i])
@@ -448,21 +449,24 @@ def saveData(samples, times, OGT_mu, OGT_sd, timestamp, SEP = ","):
     yearly_range.close()
 
 
-def dumpShell(hourlyGrowth, timestamp):
+def dumpShell(hourlyGrowth, d18o, timestamp, SEP = ","):
     '''
     This dumps the shell's values to a CSV
     Ignores all entries that are 0
 
     input:
         hourlyGrowth: hourly growth of the shell
+        d18o = d18o values for the clam
         timestamp = timestamp of this run
     '''
     file = open(timestamp + "-shell.csv", "w")
-    for val in hourlyGrowth:
-        file.write(str(val) + "\n")
+    file.write("hourly_growth,d18o\n")
+    for i in range(len(hourlyGrowth)):
+        file.write(str(hourlyGrowth[i]) + SEP + str(d18o[i]) + "\n")
     file.close()
 
 def main():
+    ''' All the parameters that can be updated are in this section '''
     noYears = 10 # no. of years to run model
     noShells = 5 # no. of shells to be sampled
 
@@ -470,11 +474,7 @@ def main():
     temp_amplitude_year = 7.5    # temperature amplitude over the year
     temp_amplitude_day = 2.5     # temperature amplitude over a day
 
-    # timestamp used for all the files created by this run
-    timestamp = datetime.datetime.now().replace(microsecond=0).isoformat().replace("T", "-").replace(":", "-")
-
-    #ogt = 25 # optimal growth temperature
-    #sd = 5   # standard deviation
+    # Optimal Growth Temperature (OGT) stats
     mu_ogt = 25      # mu for the OGT mean 
     sd_ogt = 2       # sd for the OGT mean
     mu_ogt_sd = 5    # mu for the OGT sd
@@ -488,48 +488,63 @@ def main():
 
     # shutdown is the number of months that the organism shuts down for during each winter period
     # the first value should always be 0 as you will not want to shut down in the first year
+    # uses the last value for subsequent years
     shutdowns = [0]  # no shutdown at all
     shutdowns = [0, 0, 3, 4, 5, 6]
     #shutdowns = [0, 6, 8, 10, 12] # extreme shutdown for testing
 
     # growthRate is the fraction of the maximum possible growth (compared to the first year) for each year
-    # the first value should always be 1
+    # the first value should always be 1. Uses last value for subsequent years.
     growthRate = [1, 0.8, 0.6, 0.4, 0.2, 0.1]
 
     # parameters for spring nutrient abundance
-    startJulian = 90
-    endJulian = 150
-    springIncrease = 2.0
+    startJulian = 90  # start of spring 
+    endJulian = 150   # end of spring
+    springIncrease = 2.0  # factor by which growth is increased
 
-    # water d18o parameter
+    # water d18o parameters
     meanWaterd18o = 0.25
     amplitudeWaterd18o = 0.25
-    d18oWater = genHourlyWaterd18o(noYears, meanWaterd18o, amplitudeWaterd18o)
+
+    ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 
     # generate hourly temps 
     hourlyTempsC = genHourlyTemps(noYears, temp_mean, temp_amplitude_year, temp_amplitude_day) # creating list of temperatures for time period
     
+    # generate water d18o
+    d18oWater = genHourlyWaterd18o(noYears, meanWaterd18o, amplitudeWaterd18o)
+
+    # generate d18o of clams
+    d18o = genHourlyd18o(hourlyTempsC, d18oWater)
+
+    # timestamp used for all the files created by this run
+    timestamp = datetime.datetime.now().replace(microsecond=0).isoformat().replace("T", "-").replace(":", "-")
+    
+
+    ''' This part computes summary statistics for a large number of shells '''
     # list which contains hourly temps and hr of last increment width for each sample
     samples, times, OGT_mu, OGT_sd = sampleShell(noShells, hourlyTempsC, mu_ogt, sd_ogt, mu_ogt_sd, sd_ogt_sd, maxHrWidth, shutdowns, growthRate, startJulian, endJulian, springIncrease, d18oWater) 
 
-    # compute a subsample of each sample
+    # dump the potential sample results into a file
+    saveData(samples, times, OGT_mu, OGT_sd, "potential", timestamp)
+    
+    # compute a subsample of each potential sample
     subsamples, times = subSample(samples, times, windowWidth, windowSD)
 
-    #print(len(samples), len(samples[0]), len(subsamples[0]))
+    # dump the sampled results into a file
+    saveData(subsamples, times, OGT_mu, OGT_sd, "sampled", timestamp)
+    ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 
-    # dump one specific sample into a file
-    dumpShell(hourlyIncWidth(hourlyTempsC, 25, 6, 5, shutdowns, growthRate, startJulian, endJulian, springIncrease), timestamp)
 
-    # print the stats for each sample, up to the first 5
-    #for i in range(min(noShells, 5)):
-    #    print(getStatsByYear(subsamples[i], times[i]))
+    ''' This part dumps data for a single shell generated with the OGT mean and sd given above '''
+    # dump one specific sample into a file 
+    dumpShell(hourlyIncWidth(hourlyTempsC, mu_ogt, sd_ogt, maxHrWidth, shutdowns, growthRate, startJulian, endJulian, springIncrease), d18o, timestamp)
+    ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 
-    # dump the results into a file
-    saveData(subsamples, times, OGT_mu, OGT_sd, timestamp)
-    
+    ''' This part plots the data for visualization purposes '''
     # plot all samples and compare against temp over time plot for same study period
     plotShells(samples, subsamples, times, noYears, list(range(len(samples))), hourlyTempsC, shutdowns, growthRate, startJulian, endJulian, springIncrease, d18oWater) 
-    
+    ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
     
 
     
