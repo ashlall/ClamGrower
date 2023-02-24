@@ -14,6 +14,7 @@ from statistics import NormalDist
 import pandas as pd
 import random
 import datetime
+import json
 
 def periodicFunction(a,b,c,d,t):
     """
@@ -225,7 +226,7 @@ def genPotentialSample(hourlyIncWidth, hourlyd18o, sampleSize):
 
     return d18oSamples, sampleEndHour
             
-            
+
                                                                               
 def sampleShell(noShells, temps, mu_ogt, sd_ogt, mu_ogt_sd, sd_ogt_sd, maxHrWidth, shutdowns, growthRate, startJulian, endJulian, springIncrease, d18oWater):
     """
@@ -519,6 +520,19 @@ def main():
 
     # timestamp used for all the files created by this run
     timestamp = datetime.datetime.now().replace(microsecond=0).isoformat().replace("T", "-").replace(":", "-")
+
+
+    ''' This part dumps the parameters into a JSON file '''
+    parameters = {"noYears":noYears, "noShells":noShells, "temp_mean":temp_mean, "temp_amplitude_year":temp_amplitude_year, \
+                  "temp_amplitude_day":temp_amplitude_day, "mu_ogt":mu_ogt, "sd_ogt":sd_ogt, "mu_ogt_sd":mu_ogt_sd, \
+                  "sd_ogt_sd":sd_ogt_sd, "maxHrWidth":maxHrWidth, "windowWidth":windowWidth, "windowSD":windowSD,\
+                  "shutdowns":shutdowns, "growthRate":growthRate, "startJulian":startJulian, "endJulian":endJulian, "springIncrease":springIncrease,\
+                  "meanWaterd18o":meanWaterd18o, "amplitudeWaterd18o":amplitudeWaterd18o}
+    json_object = json.dumps(parameters, indent=4)
+    with open(timestamp + "-parameters.json", "w") as outfile:
+        outfile.write(json_object)
+
+    ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
     
 
     ''' This part computes summary statistics for a large number of shells '''
